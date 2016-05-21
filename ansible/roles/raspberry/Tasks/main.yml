@@ -1,0 +1,186 @@
+---
+# file: roles/raspberry/Tasks/main.yml
+
+- name: Add multimedia repo
+  apt_repository: repo='{{ item }}' state=present
+  with_items:
+    - "deb http://www.deb-multimedia.org jessie main non-free"
+    - "deb-src http://www.deb-multimedia.org jessie main non-free"
+
+- name: Install basic packages
+  sudo: yes
+  apt: pkg={{item.name}} state=present update_cache=yes
+  with_items:
+   - { name: 'nginx'}
+   - { name: 'php5-cli'}
+   - { name: 'php5-fpm'}
+   - { name: 'gstreamer1.0'}
+   - { name: 'gstreamer-tools' }
+   - { name: 'supervisor'}
+
+- name: add repo
+  shell: rm /etc/nginx/sites-enabled/*
+
+- name: Copy nginx site
+  copy: src=nginx80 dest=/etc/nginx/sites-enabled/
+
+- name: Copy php.ini
+  copy: src=php.ini dest=/etc/php5/fpm/
+
+- name: Copy web content
+  copy: src=/Users/dfloris/Documents/Progetti/Robot360/webroot/ dest=/var/www/nginx80 owner=www-data group=www-data
+
+- name: Restart services
+  service: name={{ item }} state=restarted
+  with_items:
+   - name: 'nginx'
+   - name: 'php5-fpm'
+
+- name: Add www-data to dialout group
+  user: name=www-data groups=dialout append=yes
+
+- name: Install supervisor
+  apt: pkg={{ item.name }} state=present update_cache=yes
+  with_items:
+   - { name: 'supervisor'}
+  tags: supervisorinstall
+
+- name: copy gstreamer script
+  copy: src=supervisor_gstreamer.sh dest=/bin/supervisor_gstreamer.sh mode=777
+  tags: supervisor
+
+- name: copy janus streaming settings
+  copy: src=janus/etc/janus/janus.plugin.streaming.cfg dest=/opt/janus/etc/janus/janus.plugin.streaming.cfg
+  tags: supervisor
+
+- name: copy supervisor gstreamer
+  copy: src=janus/supervisor_gstreamer.conf dest=/etc/supervisor/conf.d/supervisor_gstreamer.conf
+  tags: supervisor
+
+- name: copy supervisor janus
+  copy: src=janus/supervisor_janus.conf dest=/etc/supervisor/conf.d/supervisor_janus.conf
+  tags: supervisor
+
+- name: create base streaming directory
+  file: path=/var/www/nginx80/httpstream state=directory mode=0777
+  tags: supervisor
+
+- name: reload and restart supervisor
+  shell: "supervisorctl reread all"
+  tags: supervisor
+
+- name: reload and restart supervisor
+  shell: "supervisorctl restart all"
+  tags: supervisor
+
+###VPN###
+- name: Install pptpd
+  apt: pkg={{ item.name }} state=present update_cache=yes
+  with_items:
+   - { name: 'pptpd'}
+  tags: vpn-install
+
+- name: Enable pptpd
+  service: name=pptpd enabled=yes
+  tags: vpn-config
+
+- name: copy pptp conf
+  copy: src=etc/pptpd.conf dest=/etc/pptpd.conf
+  tags: vpn-config
+
+- name: copy pptpd-options
+  copy: src=etc/ppp/pptpd-options dest=/etc/ppp/pptpd-options
+  tags: vpn-config
+
+- name: copy secrets
+  copy: src=etc/ppp/chap-secrets dest=/etc/ppp/chap-secrets
+  tags: vpn-config
+
+###END VPN###
+
+###DYNDNS###
+- name: Install ddclient
+  apt: pkg={{ item.name }} state=present update_cache=yes
+  with_items:
+   - { name: 'ddclient'}
+  tags: ddns-install
+
+- name: copy interface conf
+  copy: src=etc/ddclient.conf dest=/etc/ddclient.conf
+  tags: ddns-config
+
+- name: restart ddclient
+  service: name=ddclient state=restarted
+  tags: ddns-config
+
+###END DYNDNS###
+
+- name: Install isc-dhcp-server
+  apt: pkg={{ item.name }} state=present update_cache=yes
+  with_items:
+   - { name: 'isc-dhcp-server'}
+   - { name: 'hostapd'}
+  tags: router-install
+
+- name: copy interface conf
+  copy: src=etc/network/interfaces dest=/etc/network/interfaces
+  tags: router
+
+- name: restart interface wlan1
+  #service: name=networking state=restarted args=wlan1
+  shell: "ifdown wlan1 && ifup wlan1"
+  tags: router
+
+- name: restart interface eth0
+  #service: name=networking state=restarted args=wlan1
+  shell: "ifdown eth0 && ifup eth0"
+  tags: router
+
+- name: copy DHCP conf
+  copy: src=etc/dhcp/dhcpd.conf dest=/etc/dhcp/dhcpd.conf
+  tags: router
+
+- name: copy isc-dhcp-server conf
+  copy: src=etc/default/isc-dhcp-server dest=/etc/default/isc-dhcp-server
+  tags: router
+
+- name: restart isc-dhcp-server
+  service: name=isc-dhcp-server state=restarted
+  tags: router
+
+- name: set nat
+  shell: "{{ item.name }}"
+  with_items:
+   - { name: 'sysctl -w net.ipv4.ip_forward=1' }
+   - { name: 'iptables -t nat -A POSTROUTING -o wlan0 -j MASQUERADE' }
+   - { name: 'iptables -A FORWARD -i wlan0 -o wlan1 -m state --state RELATED,ESTABLISHED -j ACCEPT' }
+   - { name: 'iptables -A FORWARD -i wlan1 -o wlan0 -j ACCEPT' }
+   - { name: 'iptables-save' }
+   - { name: 'iptables-save > /etc/firewall.conf' }
+   - { name: 'echo "iptables-restore < /etc/iptables.ipv4.nat" > /lib/dhcpcd/dhcpcd-hooks/70-ipv4-nat' }
+  tags:
+   - router
+   - iptables
+   - vpn-config
+
+- name: copy hostapd conf
+  copy: src=etc/hostapd/hostapd.conf dest=/etc/hostapd/hostapd.conf
+  tags: router
+
+- name: restart hostapd
+  service: name=hostapd state=stopped
+  tags: router
+
+#- name: stop hostapd
+#  shell: service hostapd force-reload
+#  tags: router
+
+- name: start hostapd
+  service: name=hostapd state=started
+  tags: router
+
+- name: start pptpd
+  service: name=pptpd state=restarted
+  tags:
+    - router
+    - vpn-config

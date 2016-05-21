@@ -1,0 +1,30 @@
+raspberri
+pi
+daniel1
+
+16:9 aspect ratio resolutions: 1024×576, 1152×648, 1280×720, 1366×768, 1600×900, 1920×1080, 2560×1440 and 3840×2160
+
+Common resolutions for 16:9 are listed in the table below:
+
+Width	Height	Standard
+640		360		nHD
+720		405	
+848		480	
+960		540		qHD
+1024	576	
+1280	720		HD
+1366	768	
+1600	900		HD+
+1920	1080	Full HD
+2048	1152	
+2560	1440	QHD
+2880	1620	
+3200	1800	
+3840	2160	4K UHDTV
+4096	2304	
+5120	2880	5K
+7680	4320	8K UHDTV
+15360	8640	16K
+
+
+Waveshare Raspberry Pi Camera Module Kit 5 Megapixel OV5647 Sensor Adjustable-focus 2592*1944 Resolution for Any Version of Raspberry-pi
